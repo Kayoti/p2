@@ -8,7 +8,7 @@ import psycopg2
 
 def connect():
     """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament user=USER password=PASSWORD")
+    return psycopg2.connect("dbname=tournament user=USER password=PASS")
 
 
 def deleteMatches():
@@ -19,7 +19,7 @@ def deleteMatches():
     c.execute("DELETE FROM matches")
     DB.commit()
     DB.close()
-    deleteresultsdisplay()
+
 
 
 def deletePlayers():
@@ -29,22 +29,16 @@ def deletePlayers():
     c.execute("DELETE FROM players")
     DB.commit()
     DB.close()
-    deleteresultsdisplay()
+    deleteMatches()
 
-def deleteresultsdisplay():
-    """Remove all the resultsdisplay records from the database."""
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM resultsdisplay")
-    DB.commit()
-    DB.close()
+
 
 def countPlayers():
     """Returns the number of players currently registered."""
     DB = connect()
     c = DB.cursor()
     sql = """SELECT count(player) AS num
-             FROM resultsdisplay"""
+             FROM matches"""
     c.execute(sql)
     players = c.fetchone()[0]
     DB.close()
@@ -62,11 +56,11 @@ def registerPlayer(name):
     DB = connect()
     c = DB.cursor()
     player = "INSERT INTO players (name) VALUES (%s) RETURNING id"
-    resultsdisplay = """INSERT INTO resultsdisplay (player,name,score,matches)
+    matches = """INSERT INTO matches (player,name,score,matches)
                         VALUES (%s,%s,%s,%s)"""
     c.execute(player, (name,))
     playerid = c.fetchone()[0]
-    c.execute(resultsdisplay, (playerid,name,0,0))
+    c.execute(matches, (playerid,name,0,0))
     DB.commit()
     DB.close()
 
@@ -85,7 +79,7 @@ def playerStandings():
     DB = connect()
     c = DB.cursor()
     players = """SELECT r.player, p.name, r.score, r.matches
-                 FROM resultsdisplay AS r
+                 FROM matches AS r
                  INNER JOIN players AS p on p.id = r.player
                  ORDER BY r.score DESC,  r.matches DESC"""
     c.execute(players)
@@ -108,9 +102,9 @@ def reportMatch(winner, loser):
     DB = connect()
     c = DB.cursor()
     ins = "INSERT INTO matches (winner, loser) VALUES (%s,%s)"
-    win = """UPDATE resultsdisplay
+    win = """UPDATE matches
              SET score = score+%s, matches = matches+1 WHERE player = %s"""
-    los = """UPDATE resultsdisplay
+    los = """UPDATE matches
              SET score = score+%s, matches = matches+1 WHERE player = %s"""
     c.execute(ins, (winner, loser))
     c.execute(win, (win_score, winner))
@@ -154,11 +148,14 @@ def checkPairs(ranks, id1, id2):
 
     Returns id of matched player or original match if none are found.
     """
+
     if id2 >= len(ranks):
         return id1 + 1
+        #if a player is found return the id
     elif validPair(ranks[id1][0], ranks[id2][0]):
         return id2
     else:
+      #recursive call of the function but this time check next player in rank
         return checkPairs(ranks, id1, (id2 + 1))
 #code snippet from https://benjaminbrandt.com/relational-databases-final-project
 def swissPairings():
@@ -181,9 +178,14 @@ def swissPairings():
 
     numPlayers = countPlayers()
 
-
+    #loops through items retreived by playerstandings function in this case
+    #a list of tuples, each of which contains (id, name, wins, matches)
+    #goes through ranking and generates pairs
     while len(ranks) > 1:
+      #calls checkPairs to check if players did play against each other
+      #if they did the function will recursivly check for others to match
         validMatch = checkPairs(ranks,0,1)
+
         player1 = ranks.pop(0)
         player2 = ranks.pop(validMatch - 1)
         pairs.append((player1[0],player1[1],player2[0],player2[1]))
